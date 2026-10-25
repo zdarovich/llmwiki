@@ -8,12 +8,26 @@ import sys
 import uuid
 from datetime import date
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from mcp.server.fastmcp import FastMCP
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
 logger = logging.getLogger("llmwiki.local")
 
 _LOCAL_USER_ID = os.environ.get("LLMWIKI_USER_ID", str(uuid.uuid5(uuid.NAMESPACE_DNS, "local")))
 os.environ["SUPAVAULT_USER_ID"] = _LOCAL_USER_ID
+
+
+def _trust_proxy_origin(server: "FastMCP", origin: str) -> None:
+    if not origin:
+        return
+    security = server.settings.transport_security
+    if security is None or not security.enable_dns_rebinding_protection:
+        raise RuntimeError("Remote MCP requires DNS rebinding protection")
+    # Next.js rewrites Host to loopback but preserves the browser's Origin.
+    security.allowed_origins.append(origin)
 
 
 def _parse_args() -> argparse.Namespace:
@@ -93,6 +107,8 @@ def main():
             "Call the `guide` tool first to see available knowledge bases and learn the full workflow."
         ),
     )
+
+    _trust_proxy_origin(mcp, os.environ.get("LOCAL_TRUSTED_ORIGIN", ""))
 
     def _get_user_id(ctx):
         return _LOCAL_USER_ID

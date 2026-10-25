@@ -1,4 +1,4 @@
-"""Guards for the unauthenticated local API: loopback Host only; browser writes only from trusted origins."""
+"""Guards for the local API: loopback or an explicitly trusted HTTPS origin."""
 
 from __future__ import annotations
 
@@ -87,6 +87,7 @@ def is_allowed_local_origin(
     origin: str,
     app_origin: str,
     extension_origins: tuple[str, ...] = (),
+    trusted_origin: str = "",
 ) -> bool:
     """Allow the configured web UI and explicitly trusted extension IDs."""
     origin_key = _http_origin_key(origin)
@@ -96,6 +97,9 @@ def is_allowed_local_origin(
         and origin_key == app_origin_key
         and app_origin_key[1] in LOOPBACK_HOSTS
     ):
+        return True
+    trusted_key = _http_origin_key(trusted_origin)
+    if trusted_key is not None and trusted_key[0] == "https" and origin_key == trusted_key:
         return True
     return origin in normalize_extension_origins(extension_origins)
 
@@ -108,10 +112,30 @@ class LocalHTTPBoundaryMiddleware:
         app: ASGIApp,
         app_origin: str,
         extension_origins: tuple[str, ...] = (),
+        trusted_origin: str = "",
     ) -> None:
         self.app = app
         self.app_origin = app_origin
         self.extension_origins = extension_origins
+        self.trusted_origin = trusted_origin
+        self.trusted_hosts: frozenset[str] = frozenset()
+        if trusted_origin:
+            key = _http_origin_key(trusted_origin)
+            parsed = urlsplit(trusted_origin)
+            if (
+                key is None
+                or key[0] != "https"
+                or parsed.path
+                or _host_name(parsed.netloc) != key[1]
+                or "*" in parsed.netloc
+                or any(char.isspace() for char in trusted_origin)
+            ):
+                raise ValueError("LOCAL_TRUSTED_ORIGIN must be an exact HTTPS origin")
+            authority = parsed.netloc.lower()
+            hostname = f"[{key[1]}]" if ":" in key[1] else key[1]
+            self.trusted_hosts = frozenset(
+                {authority, hostname, f"{hostname}:443"} if key[2] == 443 else {authority}
+            )
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] != "http":
@@ -123,7 +147,10 @@ class LocalHTTPBoundaryMiddleware:
             for name, value in scope.get("headers", [])
             if name.lower() == b"host"
         ]
-        if len(host_values) != 1 or _host_name(host_values[0]) not in LOOPBACK_HOSTS:
+        if len(host_values) != 1 or not (
+            _host_name(host_values[0]) in LOOPBACK_HOSTS
+            or host_values[0].lower() in self.trusted_hosts
+        ):
             response = PlainTextResponse("Invalid Host header", status_code=400)
             await response(scope, receive, send)
             return
@@ -140,6 +167,7 @@ class LocalHTTPBoundaryMiddleware:
                     origin_values[0],
                     self.app_origin,
                     self.extension_origins,
+                    self.trusted_origin,
                 )
             ):
                 response = PlainTextResponse("Origin not allowed", status_code=403)

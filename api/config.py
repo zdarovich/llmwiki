@@ -27,6 +27,7 @@ class Settings(BaseSettings):
     STAGE: str = "dev"
     APP_URL: str = "http://localhost:3000"
     API_URL: str = "http://localhost:8000"
+    LOCAL_TRUSTED_ORIGIN: str = ""
     # Comma-separated; an unpacked dev build needs its chrome://extensions ID here.
     LOCAL_EXTENSION_ORIGINS: str = (
         "chrome-extension://dibilaenlekndomfbampadehjeahemha"

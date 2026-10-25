@@ -72,6 +72,15 @@ python llmwiki open C:\Users\you\research     # Windows
 This initializes the workspace, indexes the folder, starts the API and web app, and opens [localhost:3000](http://localhost:3000).
 Local mode is intentionally loopback-only: the API listens on `127.0.0.1` and does not support LAN or remote binding.
 
+To serve an initialized workspace on fixed custom ports without opening a browser:
+
+```bash
+python3 ./llmwiki serve ~/research --api-port 18473 --web-port 18474 --no-browser
+```
+
+Open `http://localhost:18474/wikis`. Without these options, `serve` keeps the default API port 8000 and web port 3000.
+When using custom ports, update external clients such as the browser extension to use the new API URL.
+
 To preview the hosted onboarding UX locally without authentication or API writes, start the web app with the development-only preview flag and open [localhost:3000/onboarding](http://localhost:3000/onboarding):
 
 ```bash
@@ -109,6 +118,8 @@ There are two ways to get material into your wiki.
 [Install from the Chrome Web Store →](https://chromewebstore.google.com/detail/llm-wiki/dibilaenlekndomfbampadehjeahemha)
 
 The extension works in both modes. By default it talks to the hosted app; flip the toggle to **Local** and it points at your running workspace at `http://localhost:8000` — so anything you clip while `./llmwiki open` is running goes straight into your local wiki. Pick a destination folder (default `/webclipper/`) and start saving.
+
+**Troubleshooting large pages.** Current extension builds strip scripts, styles, and embedded frames before saving, and cap cleaned HTML at 2 MiB. If saving fails with `422` and `String should have at most 4194304 characters`, update the installed extension (or rebuild and reload an unpacked copy at `chrome://extensions`), then refresh the article tab before retrying. This error indicates raw HTML larger than the API limit was submitted; increasing the server limit is not necessary. Pages still exceeding the capture limit after cleanup produce a local "too large to save after cleanup" error instead.
 
 # Supported files
 

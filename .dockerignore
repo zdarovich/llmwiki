@@ -11,7 +11,11 @@ extension
 screenshots
 docs
 scripts
-tests
+tests/**
+!tests/fixtures/
+!tests/fixtures/parity/
+!tests/fixtures/parity/*.json
+docker/local/.env
 **/.pytest_cache
 **/.DS_Store
 **/*.log

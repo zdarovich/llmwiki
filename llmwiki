@@ -166,7 +166,9 @@ def _index_existing_files(ws: Path, db_path: Path, user_id: str) -> None:
         print(f"✓ Indexed {indexed} existing file(s)")
 
 
-def cmd_serve(workspace: str, open_browser: bool = True) -> None:
+def cmd_serve(
+    workspace: str, open_browser: bool = True, api_port: int = 8000, web_port: int = 3000
+) -> None:
     ws = Path(workspace).resolve()
     if not (ws / ".llmwiki" / "index.db").exists():
         print(f"Workspace not initialized. Run: llmwiki init {ws}", file=sys.stderr)
@@ -176,24 +178,25 @@ def cmd_serve(workspace: str, open_browser: bool = True) -> None:
     env["MODE"] = "local"
     env["WORKSPACE_PATH"] = str(ws)
     env["DATABASE_URL"] = ""
-    env["APP_URL"] = "http://localhost:3000"
-    env["API_URL"] = "http://localhost:8000"
+    env["APP_URL"] = f"http://localhost:{web_port}"
+    env["API_URL"] = f"http://localhost:{api_port}"
 
     print(f"Starting LLM Wiki for: {ws}")
-    print(f"  API: http://localhost:8000")
-    print(f"  Web: http://localhost:3000")
+    print(f"  API: {env['API_URL']}")
+    print(f"  Web: {env['APP_URL']}")
     print(f"  MCP: llmwiki mcp-config {ws}")
     print()
 
     api_proc = subprocess.Popen(
-        [sys.executable, "-m", "uvicorn", "main:app", "--host", "127.0.0.1", "--port", "8000"],
+        [sys.executable, "-m", "uvicorn", "main:app", "--host", "127.0.0.1", "--port", str(api_port)],
         cwd=str(API_DIR),
         env=env,
     )
 
     web_env = env.copy()
     web_env["NEXT_PUBLIC_MODE"] = "local"
-    web_env["NEXT_PUBLIC_API_URL"] = "http://localhost:8000"
+    web_env["NEXT_PUBLIC_API_URL"] = env["API_URL"]
+    web_env["LOCAL_API_PROXY_URL"] = f"http://127.0.0.1:{api_port}"
     next_bin = WEB_DIR / "node_modules" / ".bin" / ("next.cmd" if os.name == "nt" else "next")
     if not next_bin.exists():
         print(
@@ -205,20 +208,23 @@ def cmd_serve(workspace: str, open_browser: bool = True) -> None:
         sys.exit(1)
     # Loopback only: the dev server proxies /api and /mcp to the unauthenticated local API.
     web_proc = subprocess.Popen(
-        [str(next_bin), "dev", "--webpack", "--port", "3000", "--hostname", "127.0.0.1"],
+        [str(next_bin), "dev", "--webpack", "--port", str(web_port), "--hostname", "127.0.0.1"],
         cwd=str(WEB_DIR),
         env=web_env,
     )
 
-    _supervise(api_proc, web_proc, open_browser)
+    _supervise(api_proc, web_proc, open_browser, env["APP_URL"])
 
 
-def _supervise(api_proc: subprocess.Popen, web_proc: subprocess.Popen, open_browser: bool) -> None:
+def _supervise(
+    api_proc: subprocess.Popen, web_proc: subprocess.Popen, open_browser: bool,
+    app_url: str = "http://localhost:3000",
+) -> None:
     """Run until either server exits or the user interrupts, then stop both."""
     try:
         if open_browser:
             time.sleep(3)
-            webbrowser.open("http://localhost:3000/wikis")
+            webbrowser.open(f"{app_url}/wikis")
         while True:
             time.sleep(0.5)
             if api_proc.poll() is not None:
@@ -341,6 +347,16 @@ def _backup_index(db_path: Path) -> Path:
     return backup_path
 
 
+def _port(value: str) -> int:
+    try:
+        port = int(value)
+    except ValueError:
+        raise argparse.ArgumentTypeError("port must be an integer") from None
+    if not 1 <= port <= 65535:
+        raise argparse.ArgumentTypeError("port must be between 1 and 65535")
+    return port
+
+
 def main():
     parser = argparse.ArgumentParser(
         prog="llmwiki",
@@ -356,6 +372,9 @@ def main():
 
     p_serve = sub.add_parser("serve", help="Start API + web servers")
     p_serve.add_argument("workspace", help="Path to workspace folder")
+    p_serve.add_argument("--api-port", type=_port, default=8000, help="API port (default: 8000)")
+    p_serve.add_argument("--web-port", type=_port, default=3000, help="Web port (default: 3000)")
+    p_serve.add_argument("--no-browser", action="store_true", help="Do not open a browser")
 
     p_mcp = sub.add_parser("mcp", help="Run stdio MCP server")
     p_mcp.add_argument("workspace", help="Path to workspace folder")
@@ -379,7 +398,9 @@ def main():
     elif args.command == "init":
         cmd_init(args.workspace)
     elif args.command == "serve":
-        cmd_serve(args.workspace)
+        if args.api_port == args.web_port:
+            parser.error("API and web ports must be different")
+        cmd_serve(args.workspace, not args.no_browser, args.api_port, args.web_port)
     elif args.command == "mcp":
         cmd_mcp(args.workspace)
     elif args.command == "mcp-config":

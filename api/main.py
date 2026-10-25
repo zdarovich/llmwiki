@@ -224,6 +224,7 @@ if settings.MODE == "local":
         LocalHTTPBoundaryMiddleware,
         app_origin=settings.APP_URL,
         extension_origins=settings.local_extension_origins,
+        trusted_origin=settings.LOCAL_TRUSTED_ORIGIN,
     )
 
 if settings.LOGFIRE_TOKEN:

@@ -17,7 +17,7 @@ const nextConfig: NextConfig = {
     return [
       {
         source: "/api/:path*",
-        destination: "http://127.0.0.1:8000/:path*",
+        destination: `${process.env.LOCAL_API_PROXY_URL || "http://127.0.0.1:8000"}/:path*`,
       },
       {
         source: "/mcp",

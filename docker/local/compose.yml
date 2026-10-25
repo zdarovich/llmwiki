@@ -1,0 +1,70 @@
+name: llmwiki-local
+
+services:
+  wiki:
+    build:
+      context: ../..
+      dockerfile: docker/local/Dockerfile
+    restart: unless-stopped
+    environment:
+      APP_URL: https://${TAILSCALE_DOMAIN:?Set the full node MagicDNS name in .env}
+      API_URL: https://${TAILSCALE_DOMAIN}/api
+      LOCAL_TRUSTED_ORIGIN: https://${TAILSCALE_DOMAIN}
+    volumes:
+      - type: bind
+        source: ${WORKSPACE_PATH:?Set an absolute workspace path in .env}
+        target: /workspace
+        bind:
+          create_host_path: false
+    networks:
+      - backend
+
+  traefik:
+    image: traefik:v3.6
+    restart: unless-stopped
+    command:
+      - --entrypoints.web.address=:8080
+      - --providers.file.filename=/etc/traefik/routes.yml
+      - --accesslog=true
+      - --log.level=INFO
+    volumes:
+      - ./traefik.yml:/etc/traefik/routes.yml:ro
+    depends_on:
+      wiki:
+        condition: service_healthy
+    networks:
+      - backend
+
+  tailscale:
+    image: tailscale/tailscale:v1.104.2
+    hostname: ${TAILSCALE_HOSTNAME:-llmwiki}
+    restart: unless-stopped
+    environment:
+      TS_AUTHKEY: ${TS_AUTHKEY:?Set a Tailscale auth key in .env}
+      TS_AUTH_ONCE: "true"
+      TS_HOSTNAME: ${TAILSCALE_HOSTNAME:-llmwiki}
+      TS_STATE_DIR: /var/lib/tailscale
+      TS_USERSPACE: "true"
+      TS_SERVE_CONFIG: /config/serve.json
+      TS_ENABLE_HEALTH_CHECK: "true"
+      TS_LOCAL_ADDR_PORT: 127.0.0.1:9002
+    volumes:
+      - tailscale-state:/var/lib/tailscale
+      - ./tailscale:/config:ro
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:9002/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    depends_on:
+      traefik:
+        condition: service_started
+    networks:
+      - backend
+
+networks:
+  backend:
+
+volumes:
+  tailscale-state:

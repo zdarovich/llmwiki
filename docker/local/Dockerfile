@@ -7,6 +7,7 @@ WORKDIR /build/web
 COPY web/package.json web/package-lock.json ./
 RUN npm ci
 COPY web/ ./
+COPY tests/fixtures/parity/ /build/tests/fixtures/parity/
 ENV NEXT_PUBLIC_MODE=local \
     NEXT_PUBLIC_API_URL=/api \
     NEXT_TELEMETRY_DISABLED=1

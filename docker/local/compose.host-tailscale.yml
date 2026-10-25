@@ -1,0 +1,14 @@
+services:
+  wiki:
+    environment:
+      APP_URL: https://${TAILSCALE_DOMAIN}:${TAILSCALE_HTTPS_PORT:-10000}
+      API_URL: https://${TAILSCALE_DOMAIN}:${TAILSCALE_HTTPS_PORT:-10000}/api
+      LOCAL_TRUSTED_ORIGIN: https://${TAILSCALE_DOMAIN}:${TAILSCALE_HTTPS_PORT:-10000}
+
+  traefik:
+    ports:
+      - "127.0.0.1:${TRAEFIK_LOOPBACK_PORT:-8088}:8080"
+
+  tailscale:
+    profiles:
+      - container-tailscale

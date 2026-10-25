@@ -138,7 +138,8 @@ async def test_foreign_origin_is_harmless_on_safe_get():
     assert (await _request("GET", origin="https://attacker.example")).status_code == 200
 
 
-def test_cli_launches_api_on_ipv4_loopback(tmp_path, monkeypatch):
+@pytest.mark.parametrize("ports", [{}, {"api_port": 18473, "web_port": 18474}])
+def test_cli_launches_api_on_ipv4_loopback(tmp_path, monkeypatch, ports):
     loader = importlib.machinery.SourceFileLoader(
         "llmwiki_cli_for_test",
         str(Path(__file__).resolve().parents[2] / "llmwiki"),
@@ -153,6 +154,8 @@ def test_cli_launches_api_on_ipv4_loopback(tmp_path, monkeypatch):
     (workspace / ".llmwiki" / "index.db").touch()
 
     launches: list[list[str]] = []
+    environments = []
+    supervised = []
 
     class _Process:
         def terminate(self):
@@ -160,6 +163,7 @@ def test_cli_launches_api_on_ipv4_loopback(tmp_path, monkeypatch):
 
     def fake_popen(args, **kwargs):
         launches.append(args)
+        environments.append(kwargs["env"])
         return _Process()
 
     web_dir = tmp_path / "web"
@@ -168,10 +172,19 @@ def test_cli_launches_api_on_ipv4_loopback(tmp_path, monkeypatch):
 
     monkeypatch.setattr(cli.subprocess, "Popen", fake_popen)
     monkeypatch.setattr(cli, "WEB_DIR", web_dir)
-    monkeypatch.setattr(cli, "_supervise", lambda *_args: None)
+    monkeypatch.setattr(cli, "_supervise", lambda *args: supervised.append(args))
 
-    cli.cmd_serve(str(workspace), open_browser=False)
+    cli.cmd_serve(str(workspace), open_browser=False, **ports)
 
     api_command, web_command = launches
     assert api_command[api_command.index("--host") + 1] == "127.0.0.1"
     assert web_command[web_command.index("--hostname") + 1] == "127.0.0.1"
+    api_port = ports.get("api_port", 8000)
+    web_port = ports.get("web_port", 3000)
+    assert api_command[api_command.index("--port") + 1] == str(api_port)
+    assert web_command[web_command.index("--port") + 1] == str(web_port)
+    assert environments[0]["APP_URL"] == f"http://localhost:{web_port}"
+    assert environments[0]["API_URL"] == f"http://localhost:{api_port}"
+    assert environments[1]["NEXT_PUBLIC_API_URL"] == f"http://localhost:{api_port}"
+    assert environments[1]["LOCAL_API_PROXY_URL"] == f"http://127.0.0.1:{api_port}"
+    assert supervised[0][2:] == (False, f"http://localhost:{web_port}")

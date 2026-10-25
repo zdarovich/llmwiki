@@ -1,0 +1,12 @@
+http:
+  routers:
+    wiki:
+      entryPoints:
+        - web
+      rule: PathPrefix(`/`)
+      service: wiki
+  services:
+    wiki:
+      loadBalancer:
+        servers:
+          - url: http://wiki:3000
